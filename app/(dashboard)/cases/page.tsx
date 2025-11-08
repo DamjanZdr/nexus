@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
@@ -244,32 +244,22 @@ export default function CasesPage() {
         <Button onClick={() => setIsModalOpen(true)}>+ Add Case</Button>
       </div>
 
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false)
-          setError(null)
-          setSelectedClient('')
-          setSelectedStatus('')
-          setSelectedAssignee('')
-        }}
-        title="Add New Case"
-      >
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Add New Case">
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-              <p className="text-sm text-red-500">{error}</p>
+            <div className="p-3 bg-red-500/10 border border-red-500 rounded text-red-500">
+              {error}
             </div>
           )}
 
           <div>
             <label className="block text-sm font-medium text-[hsl(var(--color-text-secondary))] mb-2">
-              Client *
+              Client
             </label>
             <Select
               options={clients.map(c => ({ 
                 id: c.id, 
-                label: `${getClientDisplayName(c)} ${c.client_code ? `(${c.client_code})` : ''}`
+                label: `${c.first_name || ''} ${c.last_name || ''} ${c.contact_email || ''}`.trim() || 'Unnamed Client'
               }))}
               value={selectedClient}
               onChange={setSelectedClient}

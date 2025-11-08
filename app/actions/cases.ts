@@ -7,11 +7,28 @@ export async function addCase(formData: FormData) {
   const supabase = await createClient()
 
   const clientId = formData.get('clientId') as string
-  const statusId = formData.get('statusId') as string | null
+  let statusId = formData.get('statusId') as string | null
   const assignedTo = formData.get('assignedTo') as string | null
+
+  console.log('Creating case with client_id:', clientId)
 
   if (!clientId) {
     return { error: 'Client ID is required' }
+  }
+
+  // If no status is provided, get the "New" status
+  if (!statusId) {
+    const { data: newStatus } = await supabase
+      .from('status')
+      .select('id')
+      .eq('name', 'New')
+      .single()
+    
+    console.log('New status found:', newStatus)
+    
+    if (newStatus) {
+      statusId = newStatus.id
+    }
   }
 
   const { data, error } = await supabase
@@ -27,6 +44,21 @@ export async function addCase(formData: FormData) {
   if (error) {
     console.error('Error creating case:', error)
     return { error: 'Failed to create case' }
+  }
+
+  console.log('Case created successfully:', data)
+
+  // Create default down payment installment
+  if (data?.id) {
+    await supabase
+      .from('installments')
+      .insert({
+        case_id: data.id,
+        amount: 0,
+        position: 1,
+        is_down_payment: true,
+        automatic_invoice: false,
+      })
   }
 
   revalidatePath('/cases')

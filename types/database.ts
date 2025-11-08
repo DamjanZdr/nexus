@@ -52,6 +52,33 @@ export interface Case {
   attachments?: string
 }
 
+export interface CaseService {
+  id: string
+  case_id: string
+  service_id: string
+  created_at: string
+}
+
+export interface CaseAssignee {
+  id: string
+  case_id: string
+  user_id: string
+  created_at: string
+}
+
+export interface Installment {
+  id: string
+  case_id: string
+  amount: number
+  due_date?: string
+  automatic_invoice: boolean
+  is_down_payment: boolean
+  position: number
+  paid: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface User {
   id: string
   email: string
@@ -73,7 +100,10 @@ export interface Status {
 export interface Service {
   id: string
   name: string
+  category?: string
+  gross_price?: number
   price?: number
+  created_at?: string
 }
 
 export interface Comment {
@@ -91,4 +121,22 @@ export interface Country {
 export interface City {
   id: string
   city: string
+}
+
+export interface Invoice {
+  id: string
+  case_id: string
+  installment_id?: string
+  invoice_number?: string
+  invoice_name: string
+  amount: number
+  status: 'draft' | 'sent' | 'viewed' | 'paid' | 'overdue' | 'cancelled'
+  stripe_invoice_id?: string
+  stripe_payment_intent_id?: string
+  payment_link?: string
+  sent_at?: string
+  paid_at?: string
+  due_date?: string
+  created_at: string
+  updated_at: string
 }

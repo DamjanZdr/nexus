@@ -25,6 +25,11 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--color-input-focus))]',
             'disabled:cursor-not-allowed disabled:opacity-50',
             'transition-colors duration-[var(--transition-base)]',
+            // Date input specific styling
+            type === 'date' && '[color-scheme:dark] cursor-pointer',
+            type === 'date' && '::-webkit-calendar-picker-indicator:cursor-pointer',
+            type === 'date' && '::-webkit-calendar-picker-indicator:opacity-70',
+            type === 'date' && '::-webkit-calendar-picker-indicator:hover:opacity-100',
             error && 'border-[hsl(var(--color-error))] focus-visible:ring-[hsl(var(--color-error))]',
             className
           )}

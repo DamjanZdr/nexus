@@ -4,5 +4,9 @@ CREATE TABLE IF NOT EXISTS installments (
     case_id UUID REFERENCES cases(id) ON DELETE CASCADE,
     amount DECIMAL(10,2),
     due_date DATE,
-    automatically_send_invoice BOOLEAN DEFAULT false
+    position INTEGER DEFAULT 1,
+    is_down_payment BOOLEAN DEFAULT false,
+    automatic_invoice BOOLEAN DEFAULT false,
+    paid BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
