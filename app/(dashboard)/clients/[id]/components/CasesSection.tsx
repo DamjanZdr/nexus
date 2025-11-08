@@ -19,27 +19,30 @@ interface CaseWithStatus extends Case {
 interface CasesSectionProps {
   clientId: string
   cases: CaseWithStatus[]
-  onUpdate: () => void
+  onCaseAdded: (newCase: CaseWithStatus) => void
 }
 
-export function CasesSection({ clientId, cases, onUpdate }: CasesSectionProps) {
+export function CasesSection({ clientId, cases, onCaseAdded }: CasesSectionProps) {
   const [submitting, setSubmitting] = useState(false)
   const router = useRouter()
 
   const handleAddCase = async () => {
-    console.log('CasesSection - Adding case for clientId:', clientId)
     setSubmitting(true)
     const formData = new FormData()
     formData.set('clientId', clientId)
     
     const result = await addCase(formData)
     
-    console.log('CasesSection - Result:', result)
-    
-    if (!result?.error) {
-      onUpdate()
+    if (!result?.error && result?.caseData) {
+      // Optimistically add the case to the local state
+      const newCase: CaseWithStatus = {
+        ...result.caseData,
+        status: { name: 'New' } as Status,
+        case_services: []
+      }
+      onCaseAdded(newCase)
     } else {
-      console.error('Error creating case:', result.error)
+      console.error('Error creating case:', result?.error)
     }
     setSubmitting(false)
   }

@@ -45,8 +45,6 @@ export function ServicesSection({ caseId, caseServices, onUpdate }: ServicesSect
   }
 
   const handleRemove = async (caseServiceId: string) => {
-    if (!confirm('Remove this service?')) return
-
     await removeServiceFromCase(caseServiceId, caseId)
     onUpdate()
   }

@@ -79,6 +79,17 @@ export interface Installment {
   updated_at: string
 }
 
+export interface CaseAttachment {
+  id: string
+  case_id: string
+  file_name: string
+  file_path: string
+  file_size?: number
+  file_type?: string
+  uploaded_by?: string
+  created_at: string
+}
+
 export interface User {
   id: string
   email: string
@@ -108,9 +119,15 @@ export interface Service {
 
 export interface Comment {
   id: string
+  case_id?: string
   user_id?: string
   text?: string
   created_at: string
+  users?: {
+    id: string
+    email: string
+    display_name?: string
+  }
 }
 
 export interface Country {
@@ -139,4 +156,70 @@ export interface Invoice {
   due_date?: string
   created_at: string
   updated_at: string
+}
+
+// ============================================
+// BOARDS SYSTEM TYPES
+// ============================================
+
+export interface Board {
+  id: string
+  name: string
+  description?: string
+  is_system: boolean
+  owner_id?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface BoardAccess {
+  id: string
+  board_id: string
+  user_id: string
+  access_level: 'owner' | 'editor' | 'viewer'
+  granted_by?: string
+  granted_at: string
+}
+
+export interface BoardStatus {
+  id: string
+  board_id: string
+  name: string
+  position: number
+  color?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Card {
+  id: string
+  board_id: string
+  status_id: string
+  title: string
+  description?: string
+  position: number
+  due_date?: string
+  created_by?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CardAssignee {
+  id: string
+  card_id: string
+  user_id: string
+  assigned_at: string
+}
+
+// Extended types with relations
+export interface BoardWithRelations extends Board {
+  owner?: User
+  board_access?: BoardAccess[]
+  board_statuses?: BoardStatus[]
+}
+
+export interface CardWithRelations extends Card {
+  board_statuses?: BoardStatus
+  created_by_user?: User
+  card_assignees?: (CardAssignee & { users?: User })[]
 }

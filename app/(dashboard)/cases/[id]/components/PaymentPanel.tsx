@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardHeader, CardTitle, Modal } from '@/components/ui'
+import { Modal } from '@/components/ui'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { addInstallment, updateInstallment, deleteInstallment, mergeInstallments } from '@/app/actions/installments'
@@ -204,17 +204,13 @@ export function PaymentPanel({ caseId, installments, services, onUpdate }: Payme
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle>Payment</CardTitle>
-            <div className="text-sm text-[hsl(var(--color-text-secondary))]">
-              Total: <span className="font-bold text-[hsl(var(--color-text-primary))]">{totalAmount.toFixed(2)} PLN</span>
-            </div>
+      <div className="space-y-4">
+        <div className="flex justify-end items-center">
+          <div className="text-sm text-[hsl(var(--color-text-secondary))]">
+            Total: <span className="font-bold text-[hsl(var(--color-text-primary))]">{totalAmount.toFixed(2)} PLN</span>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
+        </div>
+        <div className="space-y-3">
             {installments.map((installment, index) => (
               <div key={installment.id} className="p-3 rounded border border-[hsl(var(--color-border))] space-y-2">
                 <div className="flex justify-between items-center mb-2">
@@ -287,10 +283,9 @@ export function PaymentPanel({ caseId, installments, services, onUpdate }: Payme
             <Button variant="outline" size="sm" onClick={handleAdd} className="w-full">
               + Add Installment
             </Button>
-          </div>
 
-          {/* Invoices Section */}
-          <div className="mt-6 pt-6 border-t border-[hsl(var(--color-border))]">
+            {/* Invoices Section */}
+            <div className="mt-6 pt-6 border-t border-[hsl(var(--color-border))]">
             <h3 className="text-sm font-semibold mb-3 text-[hsl(var(--color-text-primary))]">Invoices</h3>
             {invoices.length === 0 ? (
               <p className="text-sm text-[hsl(var(--color-text-secondary))] text-center py-4">
@@ -346,8 +341,8 @@ export function PaymentPanel({ caseId, installments, services, onUpdate }: Payme
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <Modal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Delete Installment">
         <div className="space-y-4">

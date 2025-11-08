@@ -30,7 +30,6 @@ export default function ClientPage({ params }: ClientPageProps) {
   const [cityName, setCityName] = useState<string | null>(null)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [clientId, setClientId] = useState<string | null>(null)
   const supabase = createClient()
 
@@ -44,10 +43,69 @@ export default function ClientPage({ params }: ClientPageProps) {
 
   useEffect(() => {
     if (clientId) {
-      console.log('Fetching data for clientId:', clientId, 'refreshTrigger:', refreshTrigger)
       fetchAllData()
     }
-  }, [clientId, refreshTrigger])
+  }, [clientId])
+
+  // Handler for optimistic case addition
+  const handleCaseAdded = (newCase: CaseWithStatus) => {
+    setCases(prevCases => [newCase, ...prevCases])
+  }
+
+  // Handler for optimistic note updates
+  const handleNotesUpdate = async () => {
+    if (!client) return
+    const { data: notesData } = await supabase
+      .from('client_notes')
+      .select('*')
+      .eq('client_id', client.id)
+      .order('is_pinned', { ascending: false })
+      .order('created_at', { ascending: false })
+    if (notesData) setNotes(notesData)
+  }
+
+  // Handler for optimistic contact updates
+  const handleContactUpdate = async () => {
+    if (!client) return
+    const { data: phonesData } = await supabase
+      .from('contact_numbers')
+      .select('*')
+      .eq('client_id', client.id)
+      .order('number')
+    if (phonesData) setPhoneNumbers(phonesData)
+  }
+
+  // Handler for location updates
+  const handleLocationUpdate = async () => {
+    if (!client) return
+    const result = await supabase
+      .from('clients')
+      .select('*')
+      .eq('id', client.id)
+      .single()
+    
+    if (result.data) {
+      setClient(result.data)
+      
+      if (result.data.country_of_origin) {
+        const { data: countryData } = await supabase
+          .from('countries')
+          .select('country')
+          .eq('id', result.data.country_of_origin)
+          .single()
+        if (countryData) setCountryName(countryData.country)
+      }
+
+      if (result.data.city_in_poland) {
+        const { data: cityData } = await supabase
+          .from('cities')
+          .select('city')
+          .eq('id', result.data.city_in_poland)
+          .single()
+        if (cityData) setCityName(cityData.city)
+      }
+    }
+  }
 
   async function fetchAllData() {
     if (!clientId) return
@@ -101,7 +159,7 @@ export default function ClientPage({ params }: ClientPageProps) {
 
     if (notesData) setNotes(notesData)
 
-    // Try to fetch cases with services - using the hint from Supabase error
+    // Fetch cases with services
     const { data: casesData, error: casesError } = await supabase
       .from('cases')
       .select(`
@@ -114,10 +172,7 @@ export default function ClientPage({ params }: ClientPageProps) {
       .eq('client_id', dbClientId)
       .order('created_at', { ascending: false })
 
-    console.log('Fetching cases for client_id:', dbClientId)
-    console.log('Cases data:', casesData)
-    console.log('Cases error:', casesError)
-
+    if (casesError) console.error('Error fetching cases:', casesError)
     if (casesData) setCases(casesData)
 
     if (clientData.country_of_origin) {
@@ -185,30 +240,27 @@ export default function ClientPage({ params }: ClientPageProps) {
         <ContactInfo 
           client={client} 
           phoneNumbers={phoneNumbers} 
-          onUpdate={() => setRefreshTrigger(prev => prev + 1)} 
+          onUpdate={handleContactUpdate} 
         />
         
         <LocationInfo 
           client={client} 
           countryName={countryName} 
           cityName={cityName} 
-          onUpdate={() => setRefreshTrigger(prev => prev + 1)} 
+          onUpdate={handleLocationUpdate} 
         />
       </div>
 
       <CasesSection 
         clientId={client.id} 
         cases={cases} 
-        onUpdate={() => {
-          console.log('onUpdate called - incrementing refreshTrigger from', refreshTrigger)
-          setRefreshTrigger(prev => prev + 1)
-        }} 
+        onCaseAdded={handleCaseAdded} 
       />
 
       <NotesSection 
         clientId={client.id} 
         notes={notes} 
-        onUpdate={() => setRefreshTrigger(prev => prev + 1)} 
+        onUpdate={handleNotesUpdate} 
       />
 
       <Modal

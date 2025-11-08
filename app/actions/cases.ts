@@ -10,8 +10,6 @@ export async function addCase(formData: FormData) {
   let statusId = formData.get('statusId') as string | null
   const assignedTo = formData.get('assignedTo') as string | null
 
-  console.log('Creating case with client_id:', clientId)
-
   if (!clientId) {
     return { error: 'Client ID is required' }
   }
@@ -23,8 +21,6 @@ export async function addCase(formData: FormData) {
       .select('id')
       .eq('name', 'New')
       .single()
-    
-    console.log('New status found:', newStatus)
     
     if (newStatus) {
       statusId = newStatus.id
@@ -45,8 +41,6 @@ export async function addCase(formData: FormData) {
     console.error('Error creating case:', error)
     return { error: 'Failed to create case' }
   }
-
-  console.log('Case created successfully:', data)
 
   // Create default down payment installment
   if (data?.id) {

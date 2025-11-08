@@ -11,6 +11,12 @@ CREATE TABLE IF NOT EXISTS client_notes (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Drop the foreign key constraint on user_id if it was added automatically
+ALTER TABLE client_notes DROP CONSTRAINT IF EXISTS client_notes_user_id_fkey;
+
+-- Make user_id nullable (no FK constraint since auth.users is separate from public.users)
+ALTER TABLE client_notes ALTER COLUMN user_id DROP NOT NULL;
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_client_notes_client_id ON client_notes(client_id);
 CREATE INDEX IF NOT EXISTS idx_client_notes_created_at ON client_notes(created_at DESC);

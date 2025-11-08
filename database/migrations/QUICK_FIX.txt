@@ -1,0 +1,22 @@
+===========================================
+QUICK FIX FOR BOARD CREATION ERRORS
+===========================================
+
+PROBLEM:
+1. Error: trigger 'update_boards_updated_at' already exists
+2. Error: foreign key constraint 'boards_owner_id_fkey' violation
+
+SOLUTION:
+Run the CLEAN migration that drops old tables first.
+
+STEPS:
+------
+1. Open Supabase SQL Editor
+2. Copy ENTIRE contents of: database/migrations/migration_21_CLEAN_create_boards_system.sql
+3. Paste and run in Supabase
+4. After success, run: database/migrations/migration_21_fix_board_access_policy.sql
+5. Test board creation in the app
+
+WARNING: This will delete any existing board data (if any)
+
+===========================================
