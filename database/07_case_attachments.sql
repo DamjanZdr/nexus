@@ -1,0 +1,7 @@
+﻿-- Case Attachments (tracked in Supabase Storage)
+-- Bucket name: case_attachments
+-- Fields stored in metadata:
+--   - case_id
+--   - filename
+--   - uploaded_by
+--   - uploaded_at
