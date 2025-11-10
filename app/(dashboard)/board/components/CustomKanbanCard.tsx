@@ -102,11 +102,6 @@ export function CustomKanbanCard({ card, isSharedBoard, onUpdate, onEdit, isDrag
           </button>
         </div>
 
-        {card.description && (
-          <p className="text-xs text-[hsl(var(--color-text-secondary))] line-clamp-2">
-            {card.description}
-          </p>
-        )}
 
         <div className="flex items-center justify-between gap-2 pt-1">
           <div className="flex items-center gap-2 flex-1">
