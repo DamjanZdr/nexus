@@ -14,6 +14,7 @@ const navItems = [
   { href: '/clients', label: 'Clients' },
   { href: '/cases', label: 'Cases' },
   { href: '/board', label: 'Board' },
+  { href: '/wiki', label: 'Wiki' },
   { href: '/settings', label: 'Settings' },
 ]
 
