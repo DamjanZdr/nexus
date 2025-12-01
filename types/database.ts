@@ -218,6 +218,7 @@ export interface WikiDocument {
   document_type?: 'rich-text' | 'table' | 'whiteboard' // Type of document
   owner_id?: string
   folder_id?: string // The folder/wiki this document belongs to
+  position: number
   created_at: string
   updated_at: string
   is_shared: boolean

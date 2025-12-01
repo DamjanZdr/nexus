@@ -14,13 +14,17 @@ interface DocumentViewerProps {
 export function DocumentViewer({ document, canEdit, onUpdate }: DocumentViewerProps) {
   const documentType = document.document_type || 'rich-text'
 
-  switch (documentType) {
-    case 'table':
-      return <TableEditor document={document} canEdit={canEdit} onUpdate={onUpdate} />
-    case 'whiteboard':
-      return <WhiteboardEditor document={document} canEdit={canEdit} onUpdate={onUpdate} />
-    case 'rich-text':
-    default:
-      return <RichTextEditor document={document} canEdit={canEdit} onUpdate={onUpdate} />
-  }
+  return (
+    <div className="h-full w-full min-w-0">
+      {documentType === 'table' && (
+        <TableEditor document={document} canEdit={canEdit} onUpdate={onUpdate} />
+      )}
+      {documentType === 'whiteboard' && (
+        <WhiteboardEditor document={document} canEdit={canEdit} onUpdate={onUpdate} />
+      )}
+      {documentType === 'rich-text' && (
+        <RichTextEditor document={document} canEdit={canEdit} onUpdate={onUpdate} />
+      )}
+    </div>
+  )
 }

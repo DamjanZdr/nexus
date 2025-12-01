@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { DndContext, DragEndEvent, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { DndContext, DragEndEvent, closestCenter, PointerSensor, useSensor, useSensors, DragStartEvent, DragOverEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Button } from '@/components/ui/Button'
@@ -18,7 +18,10 @@ import {
   deleteWikiFolder,
   getWikiDocuments,
   createWikiDocument,
+  updateWikiDocument,
   deleteWikiDocument,
+  updateWikiDocumentPosition,
+  moveDocumentToFolder,
   getUserFolderAccess
 } from '@/app/actions/wiki'
 import type { WikiFolder, WikiDocument } from '@/types/database'
@@ -28,8 +31,10 @@ export default function WikiPage() {
   const [folders, setFolders] = useState<WikiFolder[]>([])
   const [selectedFolder, setSelectedFolder] = useState<WikiFolder | null>(null)
   const [documents, setDocuments] = useState<WikiDocument[]>([])
+  const [allDocuments, setAllDocuments] = useState<Record<string, WikiDocument[]>>({})
   const [selectedDocument, setSelectedDocument] = useState<WikiDocument | null>(null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   
   // Modals
@@ -40,6 +45,8 @@ export default function WikiPage() {
   const [showShareWikiModal, setShowShareWikiModal] = useState(false)
   const [showShareDocModal, setShowShareDocModal] = useState(false)
   const [showRenameFolderModal, setShowRenameFolderModal] = useState(false)
+  const [showRenameDocModal, setShowRenameDocModal] = useState(false)
+  const [showMoveDocModal, setShowMoveDocModal] = useState(false)
   
   // Form state
   const [newFolderName, setNewFolderName] = useState('')
@@ -51,6 +58,10 @@ export default function WikiPage() {
   const [docToShare, setDocToShare] = useState<WikiDocument | null>(null)
   const [folderToRename, setFolderToRename] = useState<WikiFolder | null>(null)
   const [renameFolderText, setRenameFolderText] = useState('')
+  const [docToRename, setDocToRename] = useState<WikiDocument | null>(null)
+  const [renameDocText, setRenameDocText] = useState('')
+  const [docToMove, setDocToMove] = useState<WikiDocument | null>(null)
+  const [moveToFolderId, setMoveToFolderId] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
   const [userAccess, setUserAccess] = useState<'owner' | 'editor' | 'viewer' | null>(null)
 
@@ -93,6 +104,7 @@ export default function WikiPage() {
     try {
       const data = await getWikiDocuments(folderId)
       setDocuments(data)
+      setAllDocuments(prev => ({ ...prev, [folderId]: data }))
     } catch (error) {
       console.error('Failed to load documents:', error)
     }
@@ -161,6 +173,44 @@ export default function WikiPage() {
     setSubmitting(false)
   }
 
+  const handleRenameDocument = async () => {
+    if (!docToRename || !renameDocText.trim()) return
+    setSubmitting(true)
+    const result = await updateWikiDocument(docToRename.id, { title: renameDocText })
+    if (!result?.error) {
+      setShowRenameDocModal(false)
+      setDocToRename(null)
+      setRenameDocText('')
+      if (selectedDocument?.id === docToRename.id) {
+        setSelectedDocument({ ...selectedDocument, title: renameDocText })
+      }
+      if (selectedFolder) {
+        loadDocuments(selectedFolder.id)
+      }
+    }
+    setSubmitting(false)
+  }
+
+  const handleMoveDocument = async () => {
+    if (!docToMove || !moveToFolderId) return
+    setSubmitting(true)
+    const result = await moveDocumentToFolder(docToMove.id, moveToFolderId)
+    if (!result?.error) {
+      setShowMoveDocModal(false)
+      setDocToMove(null)
+      setMoveToFolderId('')
+      if (selectedDocument?.id === docToMove.id) {
+        setSelectedDocument(null)
+      }
+      // Reload documents for both folders
+      if (selectedFolder) {
+        loadDocuments(selectedFolder.id)
+      }
+      loadDocuments(moveToFolderId)
+    }
+    setSubmitting(false)
+  }
+
   const handleRenameFolder = async () => {
     if (!folderToRename || !renameFolderText.trim()) return
     setSubmitting(true)
@@ -174,7 +224,7 @@ export default function WikiPage() {
     setSubmitting(false)
   }
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+  const handleFolderDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
     if (!over || active.id === over.id) return
 
@@ -195,12 +245,76 @@ export default function WikiPage() {
     }
   }
 
+  const handleDocumentDragEnd = async (event: DragEndEvent, sourceFolderId: string) => {
+    const { active, over } = event
+    setDragOverFolderId(null)
+    if (!over) return
+
+    const activeId = active.id as string
+    const overId = over.id as string
+
+    // Check if dropping on a folder (to move document)
+    if (folders.some(f => f.id === overId)) {
+      const targetFolderId = overId
+      if (targetFolderId !== sourceFolderId) {
+        // Move document to different folder
+        const result = await moveDocumentToFolder(activeId, targetFolderId)
+        if (!result?.error) {
+          // Reload both source and target folders
+          loadDocuments(sourceFolderId)
+          loadDocuments(targetFolderId)
+          if (selectedDocument?.id === activeId) {
+            setSelectedDocument(null)
+          }
+        }
+      }
+      return
+    }
+
+    // Reordering within same folder
+    if (activeId === overId) return
+
+    const folderDocs = allDocuments[sourceFolderId] || []
+    const oldIndex = folderDocs.findIndex(d => d.id === activeId)
+    const newIndex = folderDocs.findIndex(d => d.id === overId)
+
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const newDocuments = [...folderDocs]
+    const [movedDoc] = newDocuments.splice(oldIndex, 1)
+    newDocuments.splice(newIndex, 0, movedDoc)
+
+    // Update local state
+    setAllDocuments(prev => ({ ...prev, [sourceFolderId]: newDocuments }))
+    if (selectedFolder?.id === sourceFolderId) {
+      setDocuments(newDocuments)
+    }
+
+    // Update positions in database
+    for (let i = 0; i < newDocuments.length; i++) {
+      await updateWikiDocumentPosition(newDocuments[i].id, i)
+    }
+  }
+
+  const handleDocumentDragOver = (event: DragOverEvent) => {
+    const { over } = event
+    if (over && folders.some(f => f.id === over.id)) {
+      setDragOverFolderId(over.id as string)
+    } else {
+      setDragOverFolderId(null)
+    }
+  }
+
   const toggleFolder = (folderId: string) => {
     const newExpanded = new Set(expandedFolders)
     if (newExpanded.has(folderId)) {
       newExpanded.delete(folderId)
     } else {
       newExpanded.add(folderId)
+      // Load documents when expanding if not already loaded
+      if (!allDocuments[folderId]) {
+        loadDocuments(folderId)
+      }
     }
     setExpandedFolders(newExpanded)
   }
@@ -250,119 +364,93 @@ export default function WikiPage() {
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
+              onDragEnd={handleFolderDragEnd}
             >
               <SortableContext items={folders.map(f => f.id)} strategy={verticalListSortingStrategy}>
-                {folders.map(folder => (
-                  <SortableFolderItem
-                    key={folder.id}
-                    folder={folder}
-                    isExpanded={expandedFolders.has(folder.id)}
-                    isSelected={selectedFolder?.id === folder.id}
-                    documents={selectedFolder?.id === folder.id ? documents : []}
-                    selectedDocId={selectedDocument?.id}
-                    onToggle={() => toggleFolder(folder.id)}
-                    onSelectFolder={() => {
-                      setSelectedFolder(folder)
-                      setExpandedFolders(prev => new Set(prev).add(folder.id))
-                    }}
-                    onSelectDoc={(doc) => setSelectedDocument(doc)}
-                    onShare={() => {
-                      setFolderToShare(folder)
-                      setShowShareWikiModal(true)
-                    }}
-                    onRename={() => {
-                      setFolderToRename(folder)
-                      setRenameFolderText(folder.name)
-                      setShowRenameFolderModal(true)
-                    }}
-                    onDelete={() => {
-                      setFolderToDelete(folder)
-                      setShowDeleteFolderModal(true)
-                    }}
-                  />
-                ))}
+                {folders.map(folder => {
+                  const folderDocs = allDocuments[folder.id] || []
+                  return (
+                    <SortableFolderItem
+                      key={folder.id}
+                      folder={folder}
+                      isExpanded={expandedFolders.has(folder.id)}
+                      isSelected={selectedFolder?.id === folder.id}
+                      documents={folderDocs}
+                      selectedDocId={selectedDocument?.id}
+                      isDragTarget={dragOverFolderId === folder.id}
+                      onToggle={() => toggleFolder(folder.id)}
+                      onSelectFolder={() => {
+                        setSelectedFolder(folder)
+                        setExpandedFolders(prev => new Set(prev).add(folder.id))
+                      }}
+                      onSelectDoc={(doc) => setSelectedDocument(doc)}
+                      onDocumentDragEnd={(event) => handleDocumentDragEnd(event, folder.id)}
+                      onDocumentDragOver={handleDocumentDragOver}
+                      onNewDocument={() => {
+                        setSelectedFolder(folder)
+                        setShowNewDocModal(true)
+                      }}
+                      onDocumentRename={(doc) => {
+                        setDocToRename(doc)
+                        setRenameDocText(doc.title)
+                        setShowRenameDocModal(true)
+                      }}
+                      onDocumentMove={(doc) => {
+                        setDocToMove(doc)
+                        setMoveToFolderId('')
+                        setShowMoveDocModal(true)
+                      }}
+                      onDocumentDelete={(doc) => {
+                        setDocToDelete(doc)
+                        setShowDeleteDocModal(true)
+                      }}
+                      onShare={() => {
+                        setFolderToShare(folder)
+                        setShowShareWikiModal(true)
+                      }}
+                      onRename={() => {
+                        setFolderToRename(folder)
+                        setRenameFolderText(folder.name)
+                        setShowRenameFolderModal(true)
+                      }}
+                      onDelete={() => {
+                        setFolderToDelete(folder)
+                        setShowDeleteFolderModal(true)
+                      }}
+                    />
+                  )
+                })}
               </SortableContext>
-            </DndContext>
+            <div className="mt-2">
+              <button
+                onClick={() => setShowNewFolderModal(true)}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm transition-colors hover:bg-[hsl(var(--color-surface-hover))] text-[hsl(var(--color-text-secondary))]"
+              >
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                <span>New Wiki</span>
+              </button>
+            </div>
+          </DndContext>
           )}
-        </div>
-
-        {/* New folder button */}
-        <div className="p-4 border-t border-[hsl(var(--color-border))]">
-          <Button
-            onClick={() => setShowNewFolderModal(true)}
-            variant="secondary"
-            className="w-full"
-          >
-            + New Wiki
-          </Button>
         </div>
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col h-full">
+      <div className="flex-1 flex flex-col h-full min-w-0">
         {selectedDocument ? (
-          <>
-            {/* Document toolbar */}
-            <div className="border-b border-[hsl(var(--color-border))] p-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setSelectedDocument(null)}
-                  className="p-2 hover:bg-[hsl(var(--color-surface))] rounded transition-colors"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                </button>
-                <span className="text-sm text-[hsl(var(--color-text-secondary))]">
-                  {selectedFolder?.name}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={() => {
-                    setDocToShare(selectedDocument)
-                    setShowShareDocModal(true)
-                  }}
-                  variant="ghost"
-                  size="sm"
-                >
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                  </svg>
-                  Share
-                </Button>
-                {canDelete && (
-                  <Button
-                    onClick={() => {
-                      setDocToDelete(selectedDocument)
-                      setShowDeleteDocModal(true)
-                    }}
-                    variant="ghost"
-                    size="sm"
-                  >
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                    Delete
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Document viewer */}
-            <div className="flex-1 overflow-hidden p-8">
-              <DocumentViewer
-                document={selectedDocument}
-                canEdit={canEdit}
-                onUpdate={() => {
-                  if (selectedFolder) {
-                    loadDocuments(selectedFolder.id)
-                  }
-                }}
-              />
-            </div>
-          </>
+          <div className="flex-1 overflow-hidden p-8 min-w-0">
+            <DocumentViewer
+              document={selectedDocument}
+              canEdit={canEdit}
+              onUpdate={() => {
+                if (selectedFolder) {
+                  loadDocuments(selectedFolder.id)
+                }
+              }}
+            />
+          </div>
         ) : selectedFolder ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8">
             <svg className="w-20 h-20 text-[hsl(var(--color-text-secondary))] mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -523,6 +611,56 @@ export default function WikiPage() {
         </div>
       </Modal>
 
+      <Modal isOpen={showRenameDocModal} onClose={() => setShowRenameDocModal(false)} title="Rename Document">
+        <div className="space-y-4">
+          <Input
+            value={renameDocText}
+            onChange={(e) => setRenameDocText(e.target.value)}
+            placeholder="Document name..."
+            onKeyDown={(e) => e.key === 'Enter' && handleRenameDocument()}
+            autoFocus
+          />
+          <div className="flex justify-end gap-3 pt-4">
+            <Button variant="ghost" onClick={() => setShowRenameDocModal(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameDocument} disabled={!renameDocText.trim() || submitting}>
+              {submitting ? 'Renaming...' : 'Rename'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={showMoveDocModal} onClose={() => setShowMoveDocModal(false)} title="Move Document">
+        <div className="space-y-4">
+          <p className="text-sm text-[hsl(var(--color-text-secondary))]">
+            Move "{docToMove?.title}" to another wiki folder
+          </p>
+          <select
+            value={moveToFolderId}
+            onChange={(e) => setMoveToFolderId(e.target.value)}
+            className="w-full px-3 py-2 bg-[hsl(var(--color-surface))] border border-[hsl(var(--color-border))] rounded-lg text-[hsl(var(--color-text-primary))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--color-primary))]"
+          >
+            <option value="">Select a wiki...</option>
+            {folders
+              .filter(f => f.id !== docToMove?.folder_id)
+              .map(folder => (
+                <option key={folder.id} value={folder.id}>
+                  {folder.name}
+                </option>
+              ))}
+          </select>
+          <div className="flex justify-end gap-3 pt-4">
+            <Button variant="ghost" onClick={() => setShowMoveDocModal(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleMoveDocument} disabled={!moveToFolderId || submitting}>
+              {submitting ? 'Moving...' : 'Move'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal isOpen={showRenameFolderModal} onClose={() => setShowRenameFolderModal(false)} title="Rename Wiki">
         <div className="space-y-4">
           <Input
@@ -584,9 +722,16 @@ interface SortableFolderItemProps {
   isSelected: boolean
   documents: WikiDocument[]
   selectedDocId?: string
+  isDragTarget?: boolean
   onToggle: () => void
   onSelectFolder: () => void
   onSelectDoc: (doc: WikiDocument) => void
+  onDocumentDragEnd: (event: DragEndEvent, folderId: string) => void
+  onDocumentDragOver: (event: DragOverEvent) => void
+  onNewDocument: () => void
+  onDocumentRename: (doc: WikiDocument) => void
+  onDocumentMove: (doc: WikiDocument) => void
+  onDocumentDelete: (doc: WikiDocument) => void
   onShare: () => void
   onRename: () => void
   onDelete: () => void
@@ -598,9 +743,16 @@ function SortableFolderItem({
   isSelected,
   documents,
   selectedDocId,
+  isDragTarget = false,
   onToggle,
   onSelectFolder,
   onSelectDoc,
+  onDocumentDragEnd,
+  onDocumentDragOver,
+  onNewDocument,
+  onDocumentRename,
+  onDocumentMove,
+  onDocumentDelete,
   onShare,
   onRename,
   onDelete
@@ -612,7 +764,10 @@ function SortableFolderItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: folder.id })
+  } = useSortable({ 
+    id: folder.id,
+    data: { type: 'folder', folderId: folder.id }
+  })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -622,22 +777,33 @@ function SortableFolderItem({
 
   const [showMenu, setShowMenu] = useState(false)
 
+  // Always call hooks unconditionally - move sensors to top level
+  const documentSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  )
+
   return (
     <div ref={setNodeRef} style={style} className="mb-1">
       <div
-        className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+        {...attributes}
+        {...listeners}
+        className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-grab active:cursor-grabbing transition-colors ${
           isSelected
             ? 'bg-[hsl(var(--color-primary))] text-white'
+            : isDragTarget
+            ? 'bg-blue-500/20 border-2 border-blue-500'
             : 'hover:bg-[hsl(var(--color-surface-hover))]'
         }`}
       >
-        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
-          <svg className="w-4 h-4 text-[hsl(var(--color-text-secondary))]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
-          </svg>
-        </div>
         <button
-          onClick={onToggle}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggle()
+          }}
           className="flex-shrink-0"
         >
           <svg
@@ -652,7 +818,7 @@ function SortableFolderItem({
         <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
         </svg>
-        <span onClick={onSelectFolder} className="flex-1 truncate text-sm">
+        <span onClick={(e) => { e.stopPropagation(); onSelectFolder(); }} className="flex-1 truncate text-sm">
           {folder.name}
         </span>
         <div className="relative">
@@ -712,32 +878,173 @@ function SortableFolderItem({
           )}
         </div>
       </div>
-      {isExpanded && documents.length > 0 && (
+      {isExpanded && (
         <div className="ml-8 mt-1 space-y-1">
-          {documents.map(doc => (
-            <button
-              key={doc.id}
-              onClick={() => onSelectDoc(doc)}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm transition-colors ${
-                selectedDocId === doc.id
-                  ? 'bg-[hsl(var(--color-primary))] text-white'
-                  : 'hover:bg-[hsl(var(--color-surface-hover))]'
-              }`}
+          {documents.length > 0 && (
+            <DndContext
+              sensors={documentSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={(event) => onDocumentDragEnd(event, folder.id)}
+              onDragOver={onDocumentDragOver}
             >
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span className="truncate">{doc.title}</span>
-              {doc.document_type === 'table' && (
-                <span className="text-xs opacity-60">(Table)</span>
-              )}
-              {doc.document_type === 'whiteboard' && (
-                <span className="text-xs opacity-60">(Whiteboard)</span>
-              )}
-            </button>
-          ))}
+              <SortableContext items={[...documents.map(d => d.id), folder.id]} strategy={verticalListSortingStrategy}>
+                {documents.map(doc => (
+                  <SortableDocumentItem
+                    key={doc.id}
+                    document={doc}
+                    isSelected={selectedDocId === doc.id}
+                    onSelect={() => onSelectDoc(doc)}
+                    onRename={() => onDocumentRename(doc)}
+                    onMove={() => onDocumentMove(doc)}
+                    onDelete={() => onDocumentDelete(doc)}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          )}
+          <button
+            onClick={onNewDocument}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm transition-colors hover:bg-[hsl(var(--color-surface-hover))] text-[hsl(var(--color-text-secondary))]"
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <span>New Document</span>
+          </button>
         </div>
       )}
+    </div>
+  )
+}
+
+interface SortableDocumentItemProps {
+  document: WikiDocument
+  isSelected: boolean
+  onSelect: () => void
+  onRename: () => void
+  onMove: () => void
+  onDelete: () => void
+}
+
+function SortableDocumentItem({ document, isSelected, onSelect, onRename, onMove, onDelete }: SortableDocumentItemProps) {
+  const [showMenu, setShowMenu] = useState(false)
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ 
+    id: document.id,
+    data: { type: 'document', documentId: document.id }
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  const getDocumentIcon = () => {
+    switch (document.document_type) {
+      case 'table':
+        return (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        )
+      case 'whiteboard':
+        return (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
+          </svg>
+        )
+      default: // rich-text
+        return (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        )
+    }
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="group relative">
+      <div className="flex items-center">
+        <button
+          {...attributes}
+          {...listeners}
+          onClick={(e) => {
+            e.stopPropagation()
+            onSelect()
+          }}
+          className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm cursor-grab active:cursor-grabbing transition-colors ${
+            isSelected
+              ? 'bg-[hsl(var(--color-primary))] text-white'
+              : 'hover:bg-[hsl(var(--color-surface-hover))]'
+          }`}
+        >
+          {getDocumentIcon()}
+          <span className="truncate">{document.title}</span>
+        </button>
+        <div className="relative flex-shrink-0">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowMenu(!showMenu)
+            }}
+            className="p-1 rounded hover:bg-[hsl(var(--color-surface-hover))] opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+            </svg>
+          </button>
+          {showMenu && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
+              <div className="absolute right-0 top-8 z-20 bg-[hsl(var(--color-surface))] border border-[hsl(var(--color-border))] rounded-lg shadow-lg py-1 min-w-[150px]">
+                <button
+                  onClick={() => {
+                    onRename()
+                    setShowMenu(false)
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-[hsl(var(--color-surface-hover))] flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Rename
+                </button>
+                <button
+                  onClick={() => {
+                    onMove()
+                    setShowMenu(false)
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-[hsl(var(--color-surface-hover))] flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                  Move to...
+                </button>
+                <button
+                  onClick={() => {
+                    onDelete()
+                    setShowMenu(false)
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-[hsl(var(--color-surface-hover))] text-red-500 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

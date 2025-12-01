@@ -75,12 +75,24 @@ export async function createWikiFolder(name: string, isShared: boolean = false) 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
 
+  // Get the highest position for this user's folders
+  const { data: folders } = await supabase
+    .from('wiki_folders')
+    .select('position')
+    .eq('owner_id', user.id)
+    .eq('is_shared', isShared)
+    .order('position', { ascending: false })
+    .limit(1)
+
+  const newPosition = folders && folders.length > 0 ? folders[0].position + 1 : 0
+
   const { data, error } = await supabase
     .from('wiki_folders')
     .insert({
       name,
       owner_id: user.id,
       is_shared: isShared,
+      position: newPosition,
     })
     .select()
     .single()
@@ -112,6 +124,51 @@ export async function updateWikiFolderPosition(folderId: string, position: numbe
     .from('wiki_folders')
     .update({ position })
     .eq('id', folderId)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/wiki')
+  return { success: true }
+}
+
+export async function updateWikiDocumentPosition(docId: string, position: number) {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  // Get document with folder info
+  const { data: doc } = await supabase
+    .from('wiki_documents')
+    .select('owner_id, folder_id')
+    .eq('id', docId)
+    .single()
+
+  if (!doc) return { error: 'Document not found' }
+
+  const isDocOwner = doc.owner_id === user.id
+  let hasEditorAccess = false
+
+  if (!isDocOwner) {
+    // Check if user has editor access to the folder
+    const { data: access } = await supabase
+      .from('wiki_folder_access')
+      .select('access_level')
+      .eq('folder_id', doc.folder_id)
+      .eq('user_id', user.id)
+      .single()
+
+    hasEditorAccess = access?.access_level === 'editor'
+  }
+
+  if (!isDocOwner && !hasEditorAccess) {
+    return { error: 'Not authorized' }
+  }
+
+  const { error } = await supabase
+    .from('wiki_documents')
+    .update({ position })
+    .eq('id', docId)
 
   if (error) return { error: error.message }
 
@@ -203,6 +260,7 @@ export async function getWikiDocuments(folderId: string) {
     .from('wiki_documents')
     .select('*')
     .eq('folder_id', folderId)
+    .order('position', { ascending: true })
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -262,6 +320,16 @@ export async function createWikiDocument(
     }
   }
 
+  // Get the highest position for documents in this folder
+  const { data: docs } = await supabase
+    .from('wiki_documents')
+    .select('position')
+    .eq('folder_id', folderId)
+    .order('position', { ascending: false })
+    .limit(1)
+
+  const newPosition = docs && docs.length > 0 ? docs[0].position + 1 : 0
+
   const { data, error } = await supabase
     .from('wiki_documents')
     .insert({
@@ -271,6 +339,7 @@ export async function createWikiDocument(
       owner_id: user.id,
       folder_id: folderId,
       is_shared: folder.is_shared,
+      position: newPosition,
     })
     .select()
     .single()

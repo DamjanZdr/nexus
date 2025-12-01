@@ -29,13 +29,9 @@ interface TableData {
 const DEFAULT_TABLE: TableData = {
   columns: [
     { name: 'A', type: 'text', width: 125 },
-    { name: 'B', type: 'text', width: 125 },
-    { name: 'C', type: 'text', width: 125 },
   ],
   rows: [
     { id: '1' },
-    { id: '2' },
-    { id: '3' },
   ]
 }
 
@@ -232,7 +228,7 @@ export function TableEditor({ document, canEdit, onUpdate }: TableEditorProps) {
     if (!canEdit) return
     const newData = {
       ...tableData,
-      columns: [...tableData.columns, { name: getColumnLabel(tableData.columns.length), type: 'text' as ColumnType, width: 250 }]
+      columns: [...tableData.columns, { name: getColumnLabel(tableData.columns.length), type: 'text' as ColumnType, width: 125 }]
     }
     setTableData(newData)
     saveContent(newData)
@@ -357,7 +353,7 @@ export function TableEditor({ document, canEdit, onUpdate }: TableEditorProps) {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col min-w-0">
       <div className="flex-shrink-0">
         <input
           type="text"
@@ -412,7 +408,7 @@ export function TableEditor({ document, canEdit, onUpdate }: TableEditorProps) {
       </div>
 
       <div className="flex-1 min-h-0 min-w-0 overflow-auto border border-neutral-700 rounded scrollbar-thin">
-        <table className="border-collapse" style={{ width: `${tableData.columns.reduce((sum, col) => sum + col.width, 48)}px`, minWidth: '100%' }}>
+        <table className="border-collapse" style={{ width: 'max-content' }}>
           <thead>
             <tr>
               <th className="border border-neutral-700 bg-neutral-800 w-8 p-0 sticky left-0 z-10"></th>
